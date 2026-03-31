@@ -38,8 +38,12 @@ func main() {
 	})
 
 	// CORS
+	allowOrigins := os.Getenv("CORS_ORIGINS")
+	if allowOrigins == "" {
+		allowOrigins = "http://localhost:3000"
+	}
 	app.Use(cors.New(cors.Config{
-		AllowOrigins: "http://localhost:3000",
+		AllowOrigins: allowOrigins,
 		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
 		AllowMethods: "GET, POST, PUT, DELETE, OPTIONS",
 	}))
