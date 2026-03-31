@@ -15,6 +15,7 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
+  useDroppable,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -24,10 +25,30 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 
 const COLUMNS = [
-  { id: "todo", label: "Todo", color: "bg-gray-100", accent: "border-gray-300" },
-  { id: "doing", label: "Doing", color: "bg-blue-50", accent: "border-blue-400" },
-  { id: "done", label: "Done", color: "bg-green-50", accent: "border-green-400" },
+  { id: "todo", label: "Todo", dot: "bg-zinc-400", border: "border-zinc-600" },
+  { id: "doing", label: "In Progress", dot: "bg-blue-400", border: "border-blue-500/40" },
+  { id: "done", label: "Done", dot: "bg-emerald-400", border: "border-emerald-500/40" },
 ];
+
+function Column({
+  id,
+  children,
+}: {
+  id: string;
+  children: React.ReactNode;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id });
+  return (
+    <div
+      ref={setNodeRef}
+      className={`space-y-2.5 min-h-[120px] rounded-lg p-1 transition-colors ${
+        isOver ? "bg-white/5" : ""
+      }`}
+    >
+      {children}
+    </div>
+  );
+}
 
 function TaskCard({
   task,
@@ -37,13 +58,16 @@ function TaskCard({
   onClick: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: task.id, data: { task } });
+    useSortable({ id: task.id, data: { task, status: task.status } });
 
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.5 : 1,
+    opacity: isDragging ? 0.4 : 1,
   };
+
+  const isOverdue =
+    task.due_date && new Date(task.due_date) < new Date() && task.status !== "done";
 
   return (
     <div
@@ -52,23 +76,29 @@ function TaskCard({
       {...attributes}
       {...listeners}
       onClick={onClick}
-      className="bg-white rounded-lg border border-gray-200 p-3 cursor-grab active:cursor-grabbing hover:shadow-sm transition-shadow"
+      className="bg-[#1a1a23] rounded-lg border border-zinc-800 p-3.5 cursor-grab active:cursor-grabbing hover:border-zinc-600 transition-all group"
     >
-      <h4 className="text-sm font-medium text-gray-900">{task.title}</h4>
+      <h4 className="text-sm font-medium text-zinc-100">{task.title}</h4>
       {task.description && (
-        <p className="text-xs text-gray-500 mt-1 line-clamp-2">{task.description}</p>
+        <p className="text-xs text-zinc-500 mt-1.5 line-clamp-2">{task.description}</p>
       )}
-      <div className="flex items-center gap-2 mt-2">
+      <div className="flex items-center gap-2 mt-2.5">
         {task.assignee && (
-          <span className="inline-flex items-center gap-1 text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
-            <span className="w-4 h-4 rounded-full bg-blue-500 text-white flex items-center justify-center text-[10px] font-medium">
+          <span className="inline-flex items-center gap-1.5 text-xs bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded-full">
+            <span className="w-4 h-4 rounded-full bg-blue-500/80 text-white flex items-center justify-center text-[10px] font-medium">
               {task.assignee.name[0]}
             </span>
             {task.assignee.name}
           </span>
         )}
         {task.due_date && (
-          <span className="text-xs text-gray-400">
+          <span
+            className={`text-xs px-1.5 py-0.5 rounded ${
+              isOverdue
+                ? "text-red-400 bg-red-500/10"
+                : "text-zinc-500"
+            }`}
+          >
             {new Date(task.due_date).toLocaleDateString()}
           </span>
         )}
@@ -79,10 +109,10 @@ function TaskCard({
 
 function TaskOverlay({ task }: { task: Task }) {
   return (
-    <div className="bg-white rounded-lg border border-blue-300 shadow-lg p-3 w-72">
-      <h4 className="text-sm font-medium text-gray-900">{task.title}</h4>
+    <div className="bg-[#1a1a23] rounded-lg border border-blue-500/50 shadow-2xl shadow-blue-500/10 p-3.5 w-72">
+      <h4 className="text-sm font-medium text-zinc-100">{task.title}</h4>
       {task.description && (
-        <p className="text-xs text-gray-500 mt-1 line-clamp-2">{task.description}</p>
+        <p className="text-xs text-zinc-500 mt-1.5 line-clamp-2">{task.description}</p>
       )}
     </div>
   );
@@ -101,7 +131,6 @@ export default function BoardPage() {
   const [loading, setLoading] = useState(true);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
 
-  // Task modal
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [taskForm, setTaskForm] = useState({
@@ -111,7 +140,6 @@ export default function BoardPage() {
     due_date: "",
   });
 
-  // Comments
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState("");
 
@@ -174,12 +202,12 @@ export default function BoardPage() {
     const { active, over } = event;
     if (!over) return;
 
-    const activeTask = tasks.find((t) => t.id === active.id);
-    if (!activeTask) return;
+    const activeTaskData = tasks.find((t) => t.id === active.id);
+    if (!activeTaskData) return;
 
-    // Check if dropping over a column
+    // Dropping over a column directly
     const overColumn = COLUMNS.find((c) => c.id === over.id);
-    if (overColumn && activeTask.status !== overColumn.id) {
+    if (overColumn && activeTaskData.status !== overColumn.id) {
       setTasks((prev) =>
         prev.map((t) =>
           t.id === active.id ? { ...t, status: overColumn.id as Task["status"] } : t
@@ -188,9 +216,9 @@ export default function BoardPage() {
       return;
     }
 
-    // Dropping over another task
+    // Dropping over another task — move to that task's column
     const overTask = tasks.find((t) => t.id === over.id);
-    if (overTask && activeTask.status !== overTask.status) {
+    if (overTask && activeTaskData.status !== overTask.status) {
       setTasks((prev) =>
         prev.map((t) =>
           t.id === active.id ? { ...t, status: overTask.status } : t
@@ -281,31 +309,31 @@ export default function BoardPage() {
 
   if (authLoading || loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen flex items-center justify-center bg-[#0f0f13]">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen bg-[#0f0f13] flex flex-col">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200">
+      <header className="bg-[#16161d] border-b border-zinc-800/80">
         <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button
               onClick={() => router.push("/dashboard")}
-              className="text-gray-500 hover:text-gray-700"
+              className="text-zinc-500 hover:text-zinc-300 transition-colors"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
             </button>
-            <h1 className="text-lg font-semibold text-gray-900">Board</h1>
+            <h1 className="text-base font-semibold text-zinc-100">Board</h1>
           </div>
           <button
             onClick={openCreateTask}
-            className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            className="px-3.5 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors font-medium"
           >
             + New Task
           </button>
@@ -321,19 +349,22 @@ export default function BoardPage() {
           onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
         >
-          <div className="flex gap-4 min-h-[calc(100vh-8rem)]">
+          <div className="flex gap-5 min-h-[calc(100vh-8rem)]">
             {COLUMNS.map((col) => {
               const columnTasks = getColumnTasks(col.id);
               return (
                 <div
                   key={col.id}
-                  className={`w-80 shrink-0 ${col.color} rounded-xl p-3 border-t-2 ${col.accent}`}
+                  className={`w-80 shrink-0 bg-[#16161d] rounded-xl p-3.5 border ${col.border}`}
                 >
-                  <div className="flex items-center justify-between mb-3 px-1">
-                    <h3 className="text-sm font-semibold text-gray-700">
-                      {col.label}
-                    </h3>
-                    <span className="text-xs text-gray-400 bg-white px-2 py-0.5 rounded-full">
+                  <div className="flex items-center justify-between mb-3.5 px-1">
+                    <div className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ${col.dot}`}></span>
+                      <h3 className="text-sm font-semibold text-zinc-300">
+                        {col.label}
+                      </h3>
+                    </div>
+                    <span className="text-xs text-zinc-600 bg-zinc-800 px-2 py-0.5 rounded-full font-medium">
                       {columnTasks.length}
                     </span>
                   </div>
@@ -342,7 +373,7 @@ export default function BoardPage() {
                     items={columnTasks.map((t) => t.id)}
                     strategy={verticalListSortingStrategy}
                   >
-                    <div className="space-y-2 min-h-[100px]">
+                    <Column id={col.id}>
                       {columnTasks.map((task) => (
                         <TaskCard
                           key={task.id}
@@ -350,7 +381,7 @@ export default function BoardPage() {
                           onClick={() => openEditTask(task)}
                         />
                       ))}
-                    </div>
+                    </Column>
                   </SortableContext>
                 </div>
               );
@@ -364,16 +395,16 @@ export default function BoardPage() {
 
       {/* Task Modal */}
       {showTaskModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-start justify-center z-50 pt-20 px-4 overflow-y-auto">
-          <div className="bg-white rounded-xl w-full max-w-lg mb-20">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-start justify-center z-50 pt-20 px-4 overflow-y-auto">
+          <div className="bg-[#1e1e28] rounded-xl w-full max-w-lg mb-20 border border-zinc-800">
             <div className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold">
+              <div className="flex items-center justify-between mb-5">
+                <h3 className="text-lg font-semibold text-zinc-100">
                   {editingTask ? "Edit Task" : "New Task"}
                 </h3>
                 <button
                   onClick={() => setShowTaskModal(false)}
-                  className="text-gray-400 hover:text-gray-600"
+                  className="text-zinc-500 hover:text-zinc-300 transition-colors"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -383,7 +414,7 @@ export default function BoardPage() {
 
               <form onSubmit={saveTask} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-zinc-400 mb-1.5">
                     Title
                   </label>
                   <input
@@ -392,14 +423,14 @@ export default function BoardPage() {
                     onChange={(e) =>
                       setTaskForm({ ...taskForm, title: e.target.value })
                     }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 bg-[#0f0f13] border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50"
                     required
                     autoFocus
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-zinc-400 mb-1.5">
                     Description
                   </label>
                   <textarea
@@ -407,14 +438,14 @@ export default function BoardPage() {
                     onChange={(e) =>
                       setTaskForm({ ...taskForm, description: e.target.value })
                     }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                    className="w-full px-3 py-2 bg-[#0f0f13] border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 resize-none"
                     rows={3}
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-sm font-medium text-zinc-400 mb-1.5">
                       Assignee
                     </label>
                     <select
@@ -422,7 +453,7 @@ export default function BoardPage() {
                       onChange={(e) =>
                         setTaskForm({ ...taskForm, assignee_id: e.target.value })
                       }
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 bg-[#0f0f13] border border-zinc-700 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50"
                     >
                       <option value="">Unassigned</option>
                       {members.map((m) => (
@@ -434,7 +465,7 @@ export default function BoardPage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-sm font-medium text-zinc-400 mb-1.5">
                       Due Date
                     </label>
                     <input
@@ -443,14 +474,14 @@ export default function BoardPage() {
                       onChange={(e) =>
                         setTaskForm({ ...taskForm, due_date: e.target.value })
                       }
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 bg-[#0f0f13] border border-zinc-700 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50"
                     />
                   </div>
                 </div>
 
                 {editingTask && (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-sm font-medium text-zinc-400 mb-1.5">
                       Status
                     </label>
                     <select
@@ -461,10 +492,10 @@ export default function BoardPage() {
                         setEditingTask({ ...editingTask, status: newStatus });
                         fetchTasks();
                       }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 bg-[#0f0f13] border border-zinc-700 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50"
                     >
                       <option value="todo">Todo</option>
-                      <option value="doing">Doing</option>
+                      <option value="doing">In Progress</option>
                       <option value="done">Done</option>
                     </select>
                   </div>
@@ -475,7 +506,7 @@ export default function BoardPage() {
                     <button
                       type="button"
                       onClick={deleteTask}
-                      className="px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg mr-auto"
+                      className="px-4 py-2 text-sm text-red-400 hover:bg-red-500/10 rounded-lg mr-auto transition-colors"
                     >
                       Delete
                     </button>
@@ -483,13 +514,13 @@ export default function BoardPage() {
                   <button
                     type="button"
                     onClick={() => setShowTaskModal(false)}
-                    className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"
+                    className="px-4 py-2 text-sm text-zinc-400 hover:bg-zinc-800 rounded-lg transition-colors"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                    className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors font-medium"
                   >
                     {editingTask ? "Save" : "Create"}
                   </button>
@@ -497,34 +528,34 @@ export default function BoardPage() {
               </form>
             </div>
 
-            {/* Comments Section */}
+            {/* Comments */}
             {editingTask && (
-              <div className="border-t border-gray-200 p-6">
-                <h4 className="text-sm font-semibold text-gray-700 mb-3">
+              <div className="border-t border-zinc-800 p-6">
+                <h4 className="text-sm font-semibold text-zinc-300 mb-3">
                   Comments
                 </h4>
 
                 <div className="space-y-3 max-h-48 overflow-y-auto mb-4">
                   {comments.map((comment) => (
-                    <div key={comment.id} className="flex gap-2">
-                      <div className="w-7 h-7 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs font-medium shrink-0">
+                    <div key={comment.id} className="flex gap-2.5">
+                      <div className="w-7 h-7 rounded-full bg-blue-500/80 text-white flex items-center justify-center text-xs font-medium shrink-0">
                         {comment.user?.name?.[0] || "?"}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-baseline gap-2">
-                          <span className="text-sm font-medium text-gray-900">
+                          <span className="text-sm font-medium text-zinc-200">
                             {comment.user?.name}
                           </span>
-                          <span className="text-xs text-gray-400">
+                          <span className="text-xs text-zinc-600">
                             {new Date(comment.created_at).toLocaleString()}
                           </span>
                         </div>
-                        <p className="text-sm text-gray-600">{comment.content}</p>
+                        <p className="text-sm text-zinc-400">{comment.content}</p>
                       </div>
                     </div>
                   ))}
                   {comments.length === 0 && (
-                    <p className="text-sm text-gray-400">No comments yet</p>
+                    <p className="text-sm text-zinc-600">No comments yet</p>
                   )}
                 </div>
 
@@ -533,12 +564,12 @@ export default function BoardPage() {
                     type="text"
                     value={newComment}
                     onChange={(e) => setNewComment(e.target.value)}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="flex-1 px-3 py-2 bg-[#0f0f13] border border-zinc-700 rounded-lg text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50"
                     placeholder="Add a comment..."
                   />
                   <button
                     type="submit"
-                    className="px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                    className="px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors"
                   >
                     Send
                   </button>
