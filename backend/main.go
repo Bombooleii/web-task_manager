@@ -58,6 +58,22 @@ func main() {
 	// Routes
 	routes.Setup(app)
 
+	// Root
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{
+			"name":    "TaskBoard API",
+			"version": "1.0.0",
+			"status":  "running",
+			"docs": fiber.Map{
+				"auth":       "POST /api/auth/login, /api/auth/register",
+				"workspaces": "GET/POST /api/workspaces",
+				"boards":     "GET/POST /api/boards",
+				"tasks":      "GET/POST/PUT/DELETE /api/tasks",
+				"comments":   "GET/POST /api/tasks/:id/comments",
+			},
+		})
+	})
+
 	// Health check
 	app.Get("/health", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{"status": "ok"})
